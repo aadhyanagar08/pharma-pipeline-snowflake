@@ -1,0 +1,105 @@
+name: Pharma ELT Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  elt-pipeline:
+    name: Extract → Load → Transform → Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SNOWFLAKE_ACCOUNT:    ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_ORG:        ${{ secrets.SNOWFLAKE_ORG }}
+      SNOWFLAKE_USER:       ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD:   ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE:  ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE:   ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_ROLE:       ${{ secrets.SNOWFLAKE_ROLE }}
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Source code
+      # ------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 2. Python runtime
+      # ------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ------------------------------------------------------------------
+      # 3. Extract & Load (FDA FAERS → Snowflake RAW)
+      # ------------------------------------------------------------------
+      - name: Extract and load FDA adverse events
+        run: python ingestion/extract_load.py
+
+      # ------------------------------------------------------------------
+      # 4. Transform (RAW → STAGING → MARTS via SQL models)
+      # ------------------------------------------------------------------
+      - name: Apply staging model
+        run: |
+          python - <<'EOF'
+          import os, snowflake.connector
+          from pathlib import Path
+
+          account = os.environ["SNOWFLAKE_ACCOUNT"]
+          org     = os.environ.get("SNOWFLAKE_ORG", "")
+          full_account = f"{org}-{account}" if org else account
+
+          conn = snowflake.connector.connect(
+              account=full_account,
+              user=os.environ["SNOWFLAKE_USER"],
+              password=os.environ["SNOWFLAKE_PASSWORD"],
+              warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+              database=os.environ.get("SNOWFLAKE_DATABASE", "PHARMA_DB"),
+              role=os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN"),
+          )
+          sql = Path("models/staging/stg_adverse_events.sql").read_text()
+          with conn.cursor() as cur:
+              cur.execute(sql)
+          conn.close()
+          print("Staging model applied successfully.")
+          EOF
+
+      - name: Apply mart model
+        run: |
+          python - <<'EOF'
+          import os, snowflake.connector
+          from pathlib import Path
+
+          account = os.environ["SNOWFLAKE_ACCOUNT"]
+          org     = os.environ.get("SNOWFLAKE_ORG", "")
+          full_account = f"{org}-{account}" if org else account
+
+          conn = snowflake.connector.connect(
+              account=full_account,
+              user=os.environ["SNOWFLAKE_USER"],
+              password=os.environ["SNOWFLAKE_PASSWORD"],
+              warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+              database=os.environ.get("SNOWFLAKE_DATABASE", "PHARMA_DB"),
+              role=os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN"),
+          )
+          sql = Path("models/marts/mart_drug_safety.sql").read_text()
+          with conn.cursor() as cur:
+              cur.execute(sql)
+          conn.close()
+          print("Mart model applied successfully.")
+          EOF
+
+      # ------------------------------------------------------------------
+      # 5. Data Quality (exits with code 1 on any failure)
+      # ------------------------------------------------------------------
+      - name: Run data quality checks
+        run: python quality/run_checks.py

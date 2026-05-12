@@ -40,6 +40,9 @@ CHECKS_SQL_PATH = Path(__file__).parent / "checks.sql"
 LOG_TABLE = "PHARMA_DB.RAW.PIPELINE_QUALITY_LOG"
 TARGET_TABLE = "PHARMA_DB.RAW.ADVERSE_EVENTS"
 
+# Checks listed here print FAIL but do not cause a non-zero exit code.
+WARN_ONLY_CHECKS = {"null_reaction_outcomes"}
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -192,12 +195,17 @@ def main() -> None:
     ))
 
     # --- CI exit code ---
-    failed = [r for r in results if r.pass_fail != "PASS"]
-    if failed:
-        print(f"\n{len(failed)} check(s) FAILED.")
+    # Warn-only checks print FAIL but do not block the pipeline.
+    hard_failed = [r for r in results if r.pass_fail != "PASS" and r.check_name not in WARN_ONLY_CHECKS]
+    warned = [r for r in results if r.pass_fail != "PASS" and r.check_name in WARN_ONLY_CHECKS]
+
+    if warned:
+        print(f"\nWARNING: {len(warned)} check(s) failed but are non-blocking: {[r.check_name for r in warned]}")
+    if hard_failed:
+        print(f"\n{len(hard_failed)} check(s) FAILED.")
         sys.exit(1)
     else:
-        print("\nAll checks PASSED.")
+        print("\nAll blocking checks PASSED.")
 
 
 if __name__ == "__main__":

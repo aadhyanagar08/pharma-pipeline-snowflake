@@ -17,12 +17,15 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 import requests
 import snowflake.connector
 from dotenv import load_dotenv
+
+from monitoring.etl_reporter import report_run
 
 load_dotenv()
 
@@ -139,32 +142,39 @@ def load_to_snowflake(
 # Entrypoint
 # ---------------------------------------------------------------------------
 def main() -> None:
+    _start = time.time()
     source_tag = f"fda_faers_api_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
 
-    # --- Extract ---
-    raw_records = fetch_adverse_events(limit=FDA_BATCH_LIMIT)
-
-    # --- Transform (light parsing only; heavy transforms live in SQL models) ---
-    parsed_rows = [parse_event(r, source_tag) for r in raw_records]
-    log.info("Parsed %d events", len(parsed_rows))
-
-    # --- Load ---
-    log.info("Connecting to Snowflake…")
     try:
-        conn = get_snowflake_connection()
-    except KeyError as exc:
-        log.error("Missing required environment variable: %s", exc)
-        sys.exit(1)
-    except snowflake.connector.errors.DatabaseError as exc:
-        log.error("Snowflake connection failed: %s", exc)
-        sys.exit(1)
+        # --- Extract ---
+        raw_records = fetch_adverse_events(limit=FDA_BATCH_LIMIT)
 
-    try:
-        row_count = load_to_snowflake(conn, parsed_rows)
-    finally:
-        conn.close()
+        # --- Transform (light parsing only; heavy transforms live in SQL models) ---
+        parsed_rows = [parse_event(r, source_tag) for r in raw_records]
+        log.info("Parsed %d events", len(parsed_rows))
 
-    print(f"\nRows loaded into {TARGET_TABLE}: {row_count}")
+        # --- Load ---
+        log.info("Connecting to Snowflake…")
+        try:
+            conn = get_snowflake_connection()
+        except KeyError as exc:
+            log.error("Missing required environment variable: %s", exc)
+            sys.exit(1)
+        except snowflake.connector.errors.DatabaseError as exc:
+            log.error("Snowflake connection failed: %s", exc)
+            sys.exit(1)
+
+        try:
+            row_count = load_to_snowflake(conn, parsed_rows)
+        finally:
+            conn.close()
+
+        report_run(status="success", rows_processed=row_count, duration_seconds=round(time.time() - _start, 2))
+        print(f"\nRows loaded into {TARGET_TABLE}: {row_count}")
+
+    except Exception as e:
+        report_run(status="failure", error_message=str(e))
+        raise
 
 
 if __name__ == "__main__":

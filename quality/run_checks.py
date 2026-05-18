@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -26,6 +27,8 @@ from typing import NamedTuple
 import snowflake.connector
 from dotenv import load_dotenv
 from tabulate import tabulate
+
+from monitoring.etl_reporter import report_run
 
 load_dotenv()
 
@@ -146,6 +149,8 @@ def log_results(
 # Entrypoint
 # ---------------------------------------------------------------------------
 def main() -> None:
+    _start = time.time()
+
     # --- Parse checks ---
     if not CHECKS_SQL_PATH.exists():
         log.error("checks.sql not found at %s", CHECKS_SQL_PATH)
@@ -203,9 +208,12 @@ def main() -> None:
         print(f"\nWARNING: {len(warned)} check(s) failed but are non-blocking: {[r.check_name for r in warned]}")
     if hard_failed:
         print(f"\n{len(hard_failed)} check(s) FAILED.")
+        failed_names = [r.check_name for r in hard_failed]
+        report_run(status="failure", error_message=f"DQ checks failed: {', '.join(failed_names)}")
         sys.exit(1)
     else:
         print("\nAll blocking checks PASSED.")
+        report_run(status="success", rows_processed=sum(r.records_checked for r in results), duration_seconds=round(time.time() - _start, 2))
 
 
 if __name__ == "__main__":

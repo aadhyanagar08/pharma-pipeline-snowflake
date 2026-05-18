@@ -44,6 +44,9 @@ jobs:
       # ------------------------------------------------------------------
       - name: Extract and load FDA adverse events
         run: python ingestion/extract_load.py
+        env:
+          ETL_MONITOR_URL: ${{ secrets.ETL_MONITOR_URL }}
+          ETL_MONITOR_PIPELINE_ID: ${{ secrets.ETL_MONITOR_PIPELINE_ID }}
 
       # ------------------------------------------------------------------
       # 4. Transform (RAW → STAGING → MARTS via SQL models)
@@ -103,3 +106,6 @@ jobs:
       # ------------------------------------------------------------------
       - name: Run data quality checks
         run: python quality/run_checks.py
+        env:
+          ETL_MONITOR_URL: ${{ secrets.ETL_MONITOR_URL }}
+          ETL_MONITOR_PIPELINE_ID: ${{ secrets.ETL_MONITOR_PIPELINE_ID }}

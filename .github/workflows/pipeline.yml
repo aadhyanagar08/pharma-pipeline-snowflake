@@ -43,7 +43,7 @@ jobs:
       # 3. Extract & Load (FDA FAERS → Snowflake RAW)
       # ------------------------------------------------------------------
       - name: Extract and load FDA adverse events
-        run: python ingestion/extract_load.py
+        run: PYTHONPATH=. python ingestion/extract_load.py
         env:
           ETL_MONITOR_URL: ${{ secrets.ETL_MONITOR_URL }}
           ETL_MONITOR_PIPELINE_ID: ${{ secrets.ETL_MONITOR_PIPELINE_ID }}
@@ -105,7 +105,7 @@ jobs:
       # 5. Data Quality (exits with code 1 on any failure)
       # ------------------------------------------------------------------
       - name: Run data quality checks
-        run: python quality/run_checks.py
+        run: PYTHONPATH=. python quality/run_checks.py
         env:
           ETL_MONITOR_URL: ${{ secrets.ETL_MONITOR_URL }}
           ETL_MONITOR_PIPELINE_ID: ${{ secrets.ETL_MONITOR_PIPELINE_ID }}

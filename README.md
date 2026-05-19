@@ -103,6 +103,8 @@ cp .env.example .env
 | `SNOWFLAKE_WAREHOUSE` | Virtual warehouse name |
 | `SNOWFLAKE_DATABASE` | `PHARMA_DB` |
 | `SNOWFLAKE_ROLE` | `SYSADMIN` or a custom role |
+| `ETL_MONITOR_URL` | Base URL of the ETL Monitor API (e.g. `https://etl-monitor-api.onrender.com`) |
+| `ETL_MONITOR_PIPELINE_ID` | Pipeline ID registered in the monitor (e.g. `1`) |
 
 ### 3. Initialise Snowflake (one-time)
 
@@ -207,6 +209,15 @@ SNOWFLAKE_WAREHOUSE
 SNOWFLAKE_DATABASE
 SNOWFLAKE_ROLE
 ```
+
+---
+
+## Pipeline Health Monitoring
+
+After every execution, this pipeline reports its run results to a live ETL Monitor API. The `monitoring/etl_reporter.py` module handles all reporting and silently skips if `ETL_MONITOR_URL` is not set.
+
+- **Live health dashboard:** [https://etl-monitor-api.onrender.com/pipelines/1/health](https://etl-monitor-api.onrender.com/pipelines/1/health)
+- **Run history:** [https://etl-monitor-api.onrender.com/pipelines/1/runs](https://etl-monitor-api.onrender.com/pipelines/1/runs)
 
 ---
 
